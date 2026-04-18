@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     api_v1: str = "/api/v1"
     api_latest: str = api_v1
     paging_limit: int = 100
-    cors_origins: list[AnyHttpUrl] = []
+    cors_origins: list[str] = []
     cors_allow_all: bool = False
 
     # DATABASE SETTINGS
