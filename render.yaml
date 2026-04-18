@@ -3,5 +3,5 @@ services:
     name: open-wearable-backend
     env: python
     rootDir: backend
-    buildCommand: pip install -r config/.env.example || pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    buildCommand: pip install uv && uv sync
+    startCommand: uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT
