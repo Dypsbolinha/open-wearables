@@ -1,8 +1,11 @@
+import threading
 from collections import defaultdict
 from datetime import datetime
 from logging import Logger, getLogger
 from typing import Any
 from uuid import UUID
+
+from sqlalchemy import event as sa_event
 
 from app.database import DbSession
 from app.models import DataPointSeries
@@ -26,6 +29,7 @@ from app.schemas.utils import (
     SourceMetadata,
     TimeseriesMetadata,
 )
+from app.services.outgoing_webhooks import svix as svix_service
 from app.services.outgoing_webhooks.events import on_timeseries_batch_saved
 from app.services.services import AppService
 from app.utils.exceptions import handle_exceptions
@@ -51,7 +55,17 @@ class TimeSeriesService(
         samples: (list[TimeSeriesSampleCreate] | list[HeartRateSampleCreate] | list[StepSampleCreate]),
     ) -> None:
         self.crud.bulk_create(db_session, samples)  # type: ignore[arg-type]
-        self._emit_timeseries_webhooks(samples)
+        samples_copy = list(samples)
+
+        @sa_event.listens_for(db_session, "after_commit", once=True)
+        def _start_webhook_thread(session: DbSession) -> None:  # noqa: ARG001
+            if not svix_service.is_enabled():
+                return
+            threading.Thread(
+                target=self._emit_timeseries_webhooks,
+                args=(samples_copy,),
+                daemon=True,
+            ).start()
 
     @staticmethod
     def _emit_timeseries_webhooks(

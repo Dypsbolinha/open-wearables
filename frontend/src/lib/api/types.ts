@@ -711,8 +711,8 @@ export interface WebhookTestEventResponse {
 
 export interface WebhookMessage {
   id: string;
-  event_type: string;
-  event_id: string | null;
+  eventType: string;
+  eventId: string | null;
   timestamp: string;
   channels: string[] | null;
   tags: string[] | null;
@@ -721,15 +721,15 @@ export interface WebhookMessage {
 
 export interface WebhookMessageAttempt {
   id: string;
-  endpoint_id: string;
-  msg_id: string;
+  endpointId: string;
+  msgId: string;
   url: string;
   response: string;
-  response_status_code: number;
-  response_duration_ms: number;
+  responseStatusCode: number;
+  responseDurationMs: number;
   status: number | string;
-  status_text?: string;
-  trigger_type: number | string;
+  statusText?: string;
+  triggerType: number | string;
   timestamp: string;
   msg?: WebhookMessage | null;
 }
@@ -738,5 +738,14 @@ export interface WebhookListResponse<T> {
   data: T[];
   done: boolean;
   iterator: string | null;
-  prev_iterator: string | null;
+  prevIterator: string | null;
+}
+
+export interface WebhookAttemptsParams {
+  limit?: number;
+  iterator?: string | null;
+  before?: string | null;
+  after?: string | null;
+  status?: number | null;
+  event_types?: string[];
 }
