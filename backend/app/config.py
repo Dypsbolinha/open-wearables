@@ -191,16 +191,6 @@ class Settings(BaseSettings):
             self.svix_jwt_secret = SecretStr(self.secret_key)
         return self
 
-    @field_validator("cors_origins", mode="after")
-    @classmethod
-    def assemble_cors_origins(cls, v: str | list[str]) -> list[str] | str:
-        if isinstance(v, str) and not v.startswith("["):
-            return [i.strip() for i in v.split(",")]
-        if isinstance(v, (list, str)):
-            return v
-
-        # This should never be reached given the type annotation, but ensures type safety
-        raise ValueError(f"Unexpected type for cors_origins: {type(v)}")
 
     def oauth_redirect_uri(self, provider: ProviderName) -> str:
         """Build OAuth redirect URI for a provider.
