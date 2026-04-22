@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e -x
 
+# Entra na pasta correta onde o módulo 'app' existe
+cd /opt/render/project/src/backend
+
 # Ativa o virtualenv diretamente (evita conflito com uv)
 source /opt/render/project/src/.venv/bin/activate
 
