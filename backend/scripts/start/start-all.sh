@@ -42,18 +42,17 @@ for i in 1 2 3; do
     sleep 5
 done || echo "Warning: Could not register webhook event types with Svix."
 
-# ── Start Celery worker in background ────────────────────────────────────────
-echo 'Starting Celery worker...'
-uv run --active celery -A app.main:celery_app worker --loglevel=info --pool=threads -Q default,sdk_sync,garmin_sync &
+# ── Start Celery worker com concurrency 1 para economizar memória ─────────────
+# Beat removido — o WhoopLike já faz polling a cada hora
+echo 'Starting Celery worker (concurrency=1)...'
+uv run --active celery -A app.main:celery_app worker \
+    --loglevel=info \
+    --pool=threads \
+    --concurrency=1 \
+    -Q default,sdk_sync,garmin_sync &
 WORKER_PID=$!
 
-# ── Start Celery beat in background ──────────────────────────────────────────
-echo 'Starting Celery beat...'
-rm -f './celerybeat.pid'
-uv run --active celery -A app.main:celery_app beat -l info &
-BEAT_PID=$!
-
-# ── Start uvicorn (foreground) ────────────────────────────────────────────────
+# ── Start uvicorn ─────────────────────────────────────────────────────────────
 echo 'Starting uvicorn...'
 uv run --active uvicorn app.main:api --host 0.0.0.0 --port 8000 &
 APP_PID=$!
@@ -61,11 +60,11 @@ APP_PID=$!
 # Se qualquer processo morrer, mata os outros e sai
 wait_and_exit() {
     echo "Um processo encerrou. Encerrando os demais..."
-    kill $WORKER_PID $BEAT_PID $APP_PID 2>/dev/null
+    kill $WORKER_PID $APP_PID 2>/dev/null
     exit 1
 }
 
 trap wait_and_exit SIGTERM SIGINT
 
 # Aguarda todos os processos
-wait $APP_PID $WORKER_PID $BEAT_PID
+wait $APP_PID $WORKER_PID
