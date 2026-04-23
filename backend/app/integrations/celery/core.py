@@ -6,7 +6,6 @@ from app.config import settings
 from app.services import raw_payload_storage
 from celery import Celery, signals
 from celery import current_app as current_celery_app
-from celery.schedules import crontab
 
 _WEBHOOK_TASK = "emit_webhook_event_task.emit_webhook_event"
 
@@ -26,21 +25,9 @@ class _WebhookTraceFilter(logging.Filter):
 
 @signals.setup_logging.connect
 def setup_celery_logging(**kwargs) -> None:
-    """
-    Configure Celery logging to use stdout instead of stderr.
-
-    Some platforms convert stderr logs to level.error automatically, so we must use stdout
-    to ensure platforms correctly identify log levels from JSON structured logs.
-
-    This signal is called when Celery sets up its logging configuration.
-    """
-    # Get Celery's logger
     celery_logger = getLogger("celery")
-
-    # Remove existing handlers that might use stderr
     celery_logger.handlers.clear()
 
-    # Create a handler that uses stdout
     stdout_handler = StreamHandler(sys.stdout)
     stdout_handler.setFormatter(
         Formatter(
@@ -49,14 +36,10 @@ def setup_celery_logging(**kwargs) -> None:
         )
     )
 
-    # Add stdout handler to Celery logger
     celery_logger.addHandler(stdout_handler)
-    celery_logger.setLevel(logging.INFO)
+    celery_logger.setLevel(logging.WARNING)  # WARNING em vez de INFO — menos ruído e memória
     celery_logger.propagate = False
 
-    # celery.app.trace logs "Task ... succeeded in Xs: {result}" at INFO for
-    # every task execution.  Suppress those lines only for the high-frequency
-    # webhook emit task to avoid log spam while keeping traces for all others.
     getLogger("celery.app.trace").addFilter(_WebhookTraceFilter())
 
 
@@ -87,6 +70,10 @@ def create_celery() -> Celery:
         result_expires=3 * 24 * 3600,
         control_queue_ttl=300,
         control_queue_expires=300,
+        # Limita memória: descarta resultados de tasks que não precisam de retorno
+        task_ignore_result=True,
+        # Evita que o worker pré-busque muitas tasks de uma vez
+        worker_prefetch_multiplier=1,
         task_queues={
             "default": {},
             "sdk_sync": {},
@@ -100,43 +87,11 @@ def create_celery() -> Celery:
 
     celery_app.autodiscover_tasks(["app.integrations.celery.tasks"])
 
-    celery_app.conf.beat_schedule = {
-        "sync-all-users-periodic": {
-            "task": "app.integrations.celery.tasks.periodic_sync_task.sync_all_users",
-            "schedule": float(settings.sync_interval_seconds),
-            "args": (),  # No args - task calculates date range dynamically
-            "kwargs": {"user_id": None},
-        },
-        "finalize-stale-sleeps-periodic": {
-            "task": "app.integrations.celery.tasks.finalize_stale_sleep_task.finalize_stale_sleeps",
-            "schedule": float(settings.sleep_sync_interval_seconds),
-            "args": (),
-            "kwargs": {},
-        },
-        "gc-stuck-garmin-backfills": {
-            "task": "app.integrations.celery.tasks.garmin_gc_task.gc_stuck_backfills",
-            "schedule": 180.0,  # Every 3 minutes
-            "args": (),
-            "kwargs": {},
-        },
-        "run-daily-archival": {
-            "task": "app.integrations.celery.tasks.archival_task.run_daily_archival",
-            "schedule": crontab(hour=3, minute=0),  # Daily at 03:00 UTC
-            "args": (),
-            "kwargs": {},
-        },
-        "fill-missing-sleep-scores": {
-            "task": "app.integrations.celery.tasks.fill_missing_sleep_scores_task.fill_missing_sleep_scores",
-            "schedule": float(settings.sleep_score_interval_seconds),
-            "args": (),
-            "kwargs": {},
-        },
-        "fill-missing-resilience-scores": {
-            "task": "app.integrations.celery.tasks.fill_missing_resilience_scores_task.fill_missing_resilience_scores",
-            "schedule": float(settings.resilience_score_interval_seconds),
-            "args": (),
-            "kwargs": {},
-        },
-    }
+    # NOTA: beat_schedule removido intencionalmente.
+    # O Celery Beat não está sendo iniciado no start-all.sh (economiza ~80MB).
+    # As tasks periódicas (sync, sleep scores, etc.) são acionadas pelo
+    # polling do WhoopLike a cada 1h, conforme descrito no README.
+    # Se precisar reativar o Beat no futuro, adicione aqui e suba um
+    # segundo serviço no Render dedicado ao Beat.
 
     return celery_app
