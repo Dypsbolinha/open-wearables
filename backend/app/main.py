@@ -18,17 +18,12 @@ from app.services import raw_payload_storage
 from app.services.outgoing_webhooks import svix as svix_service
 from app.utils.exceptions import DatetimeParseError, handle_exception
 
-# Configure logging to use stdout instead of stderr
-# Some platforms convert stderr logs to level.error automatically, so we must use stdout
-# This ensures platforms correctly identify log levels from JSON structured logs
 basicConfig(
     level=INFO,
     format="[%(asctime)s - %(name)s] (%(levelname)s) %(message)s",
     handlers=[StreamHandler(sys.stdout)],
 )
 
-# Remove uvicorn's default handlers to prevent duplicate logs (uvicorn.error)
-# and ensure access logs (uvicorn.access) also get timestamps via the root logger
 for _name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
     _logger = logging.getLogger(_name)
     _logger.handlers.clear()
@@ -37,7 +32,14 @@ for _name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
 
 @asynccontextmanager
 async def _lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
-    svix_service.register_event_types()
+    # Só registra event types se o Svix estiver configurado,
+    # evitando dezenas de erros de conexão no boot quando não há credenciais.
+    if svix_service.is_enabled():
+        svix_service.register_event_types()
+    else:
+        logging.getLogger(__name__).info(
+            "Svix not configured — skipping webhook event type registration on startup."
+        )
     yield
 
 
@@ -54,7 +56,6 @@ raw_payload_storage.configure(
 
 add_cors_middleware(api)
 
-# Mount static files for provider icons
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
     api.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
