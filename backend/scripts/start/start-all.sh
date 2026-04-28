@@ -35,14 +35,20 @@ else
     echo 'Svix not configured — skipping webhook event type registration.'
 fi
 
-# Celery worker: concurrency=1, threads, sem beat
-# --max-tasks-per-child reinicia o worker após N tasks, liberando memória
-echo 'Starting Celery worker (concurrency=1, max-tasks-per-child=20)...'
+# ─── Celery worker ────────────────────────────────────────────────────────────
+# IMPORTANTE: --pool=prefork (padrão) em vez de --pool=threads.
+# Com threads, --max-tasks-per-child e --max-memory-per-child são ignorados
+# silenciosamente — o processo nunca reinicia e a memória acumula até OOM.
+# Com prefork + concurrency=1, o único worker process é reciclado após
+# 10 tasks OU se ultrapassar 200MB, mantendo o uso estável no free tier (512MB).
+# ─────────────────────────────────────────────────────────────────────────────
+echo 'Starting Celery worker (prefork, concurrency=1, max-tasks=10, max-mem=200MB)...'
 uv run --active celery -A app.main:celery_app worker \
     --loglevel=warning \
-    --pool=threads \
+    --pool=prefork \
     --concurrency=1 \
-    --max-tasks-per-child=20 \
+    --max-tasks-per-child=10 \
+    --max-memory-per-child=200000 \
     -Q default,sdk_sync,garmin_sync &
 WORKER_PID=$!
 
